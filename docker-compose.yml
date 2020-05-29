@@ -1,0 +1,74 @@
+version: "2.4"
+
+services:
+  db:
+    image: postgres:12-alpine
+    ports:
+      - 5432
+    volumes:
+      - ./pg:/docker-entrypoint-initdb.d/
+      - ./pg-data:/bar/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+
+  api:
+    build: ./api
+    init: true
+    command: npm run watch
+    volumes:
+      - ./api/src:/server/src
+      - ./api/dist:/server/dist
+    ports:
+      - "3001:3001"
+      - "5858:5858"
+    environment:
+      - PG_HOST=db
+      - PG_USERNAME=postgres
+      - PG_PASSWORD=password
+      - PORT=3001
+    links:
+      - db
+
+  ui:
+    init: true
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    volumes:
+      - "./ui:/usr/app"
+      - "/app/node_modules"
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+      - API_URL=localhost:3001
+    stdin_open: true
+    tty: true
+
+  storybook:
+    init: true
+    image: node:lts-alpine
+    command: npm run storybook
+    volumes:
+      - ./ui:/usr/src/app
+    working_dir: /usr/src/app
+    ports:
+      - 9009:9009
+
+  e2e:
+    init: true
+    image: cypress
+    build:
+      context: ./e2e
+    depends_on:
+      - ui
+    environment:
+      - CYPRESS_baseUrl=http://ui:3000
+    command: npx cypress run
+    links:
+      - ui
+    volumes:
+      - ./e2e/cypress:/app/cypress
+      - ./e2e/cypress.json:/app/cypress.json
